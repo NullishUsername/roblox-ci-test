@@ -1,4 +1,4 @@
-# Build outputs (base.rbxl is NOT ignored - it's the committed map)
+# Build outputs
 code.rbxl
 game.rbxl
 *.rbxl.lock
@@ -7,3 +7,7 @@ sourcemap.json
 Packages/
 ServerPackages/
 .env
+
+# Downloaded from the build place on every deploy.
+# Remove this line only if you switch to a committed map (base_place_id = "").
+base.rbxl

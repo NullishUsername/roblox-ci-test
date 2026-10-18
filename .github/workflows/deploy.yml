@@ -1,8 +1,11 @@
 name: Deploy
 
 on:
+  # Code changes deploy automatically
   push:
     branches: [main]
+
+  # Map-only changes: Actions -> Deploy -> Run workflow (no commit needed)
   workflow_dispatch:
     inputs:
       target:
@@ -15,6 +18,10 @@ on:
         type: choice
         options: [Published, Saved]
         default: Published
+
+  # Optional: also pick up builders' map changes on a timer. Uncomment to enable.
+  # schedule:
+  #   - cron: "0 */6 * * *"   # every 6 hours (UTC)
 
 permissions:
   contents: read
@@ -54,18 +61,16 @@ jobs:
           T=$(jq -c --arg e "$TARGET" '[.[] | select(.environment == $e)]' deploy-targets.json)
           if [ "$T" = "[]" ]; then echo "::error::No targets for '$TARGET'"; exit 1; fi
           if echo "$T" | grep -q REPLACE_WITH; then
-            echo "::error::Fill in universe_id and place_id in deploy-targets.json"; exit 1
+            echo "::error::Fill in the IDs in deploy-targets.json"; exit 1
           fi
           echo "targets=$T" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build place
+    name: Build code
     needs: check-dispatcher
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          lfs: true   # base.rbxl is stored in Git LFS
 
       - name: Install toolchain (Rokit)
         uses: CompeyDev/setup-rokit@v0.2.1
@@ -84,13 +89,10 @@ jobs:
       - name: Build code with Rojo
         run: rojo build default.project.json -o code.rbxl
 
-      - name: Merge code into base place
-        run: lune run merge base.rbxl code.rbxl game.rbxl
-
       - uses: actions/upload-artifact@v4
         with:
-          name: place
-          path: game.rbxl
+          name: code
+          path: code.rbxl
           retention-days: 7
 
   publish:
@@ -105,5 +107,6 @@ jobs:
       environment: ${{ matrix.target.environment }}
       universe_id: ${{ matrix.target.universe_id }}
       place_id: ${{ matrix.target.place_id }}
+      base_place_id: ${{ matrix.target.base_place_id }}
       version_type: ${{ inputs.version_type || 'Published' }}
     secrets: inherit

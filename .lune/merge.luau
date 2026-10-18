@@ -22,7 +22,7 @@ local MANAGED = {
 }
 
 if not fs.isFile(basePath) then
-	error(`Base place '{basePath}' not found. Export your place from Studio (File > Save to File As) and commit it.`)
+	error(`Base place '{basePath}' not found. In CI it is downloaded by scripts/download-place.sh; locally, run that script first.`)
 end
 
 local base = roblox.deserializePlace(fs.readFile(basePath))

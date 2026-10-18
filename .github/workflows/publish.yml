@@ -3,10 +3,13 @@ name: Publish place
 on:
   workflow_call:
     inputs:
-      environment:  { type: string, required: true }
-      universe_id:  { type: string, required: true }
-      place_id:     { type: string, required: true }
-      version_type: { type: string, default: Published }
+      environment:   { type: string, required: true }
+      universe_id:   { type: string, required: true }
+      place_id:      { type: string, required: true }
+      # Where the map comes from. Empty = the same place we publish to (one game).
+      # "committed" = use base.rbxl from the repo. Any other ID = download that place.
+      base_place_id: { type: string, default: "" }
+      version_type:  { type: string, default: Published }
 
 permissions:
   contents: read
@@ -21,24 +24,54 @@ jobs:
     concurrency:
       group: roblox-${{ inputs.environment }}-${{ inputs.place_id }}
       cancel-in-progress: false   # never kill a deploy mid-upload
+    env:
+      ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts
-          sparse-checkout-cone-mode: false
+          lfs: ${{ inputs.base_place_id == 'committed' }}   # only needed for a committed base.rbxl
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: place
-
-      - name: Publish via Open Cloud
-        env:
-          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
-          UNIVERSE_ID: ${{ inputs.universe_id }}
-          PLACE_ID: ${{ inputs.place_id }}
-          VERSION_TYPE: ${{ inputs.version_type }}
+      - name: Check secret
         run: |
           if [ -z "$ROBLOX_API_KEY" ]; then
             echo "::error::ROBLOX_API_KEY secret is empty - add it to the '${{ inputs.environment }}' environment"; exit 1
           fi
-          bash scripts/publish.sh game.rbxl
+
+      - name: Install toolchain (Rokit)
+        uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ github.token }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: code
+
+      - name: Get the map (latest saved version)
+        env:
+          BASE_PLACE_ID: ${{ inputs.base_place_id || inputs.place_id }}
+        run: |
+          if [ "$BASE_PLACE_ID" = "committed" ]; then
+            echo "Using committed base.rbxl"
+            echo "Map: committed base.rbxl" >> "$GITHUB_STEP_SUMMARY"
+          else
+            bash scripts/download-place.sh base.rbxl
+            echo "Map: latest version of place $BASE_PLACE_ID" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Merge code into map
+        run: lune run merge base.rbxl code.rbxl game.rbxl
+
+      - name: Publish via Open Cloud
+        env:
+          UNIVERSE_ID: ${{ inputs.universe_id }}
+          PLACE_ID: ${{ inputs.place_id }}
+          VERSION_TYPE: ${{ inputs.version_type }}
+        run: bash scripts/publish.sh game.rbxl
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: game-${{ inputs.environment }}
+          path: game.rbxl
+          retention-days: 3
+          if-no-files-found: ignore
