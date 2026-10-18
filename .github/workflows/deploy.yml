@@ -31,7 +31,10 @@ jobs:
     name: Check dispatcher
     runs-on: ubuntu-latest
     outputs:
-      targets: ${{ steps.targets.outputs.targets }}
+      environment: ${{ steps.target.outputs.environment }}
+      universe_id: ${{ steps.target.outputs.universe_id }}
+      place_id: ${{ steps.target.outputs.place_id }}
+      base_place_id: ${{ steps.target.outputs.base_place_id }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,60 +56,31 @@ jobs:
             *) echo "::error::$ACTOR is not in the deployers list ($ALLOWED)"; exit 1 ;;
           esac
 
-      - name: Select targets
-        id: targets
+      - name: Select target
+        id: target
         env:
           TARGET: ${{ inputs.target || 'test' }}
         run: |
-          T=$(jq -c --arg e "$TARGET" '[.[] | select(.environment == $e)]' deploy-targets.json)
-          if [ "$T" = "[]" ]; then echo "::error::No targets for '$TARGET'"; exit 1; fi
+          T=$(jq -c --arg e "$TARGET" 'map(select(.environment == $e)) | first // empty' deploy-targets.json)
+          if [ -z "$T" ]; then echo "::error::No target '$TARGET' in deploy-targets.json"; exit 1; fi
           if echo "$T" | grep -q REPLACE_WITH; then
             echo "::error::Fill in the IDs in deploy-targets.json"; exit 1
           fi
-          echo "targets=$T" >> "$GITHUB_OUTPUT"
-
-  build:
-    name: Build code
-    needs: check-dispatcher
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install toolchain (Rokit)
-        uses: CompeyDev/setup-rokit@v0.2.1
-        with:
-          token: ${{ github.token }}
-
-      - name: Stamp build info
-        run: |
-          cat > src/shared/BuildInfo.luau <<EOF
-          return {
-          	commit = "${GITHUB_SHA::7}",
-          	builtAt = "$(date -u +%Y-%m-%dT%H:%MZ)",
-          }
-          EOF
-
-      - name: Build code with Rojo
-        run: rojo build default.project.json -o code.rbxl
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: code
-          path: code.rbxl
-          retention-days: 7
+          {
+            echo "environment=$(jq -r .environment <<<"$T")"
+            echo "universe_id=$(jq -r .universe_id <<<"$T")"
+            echo "place_id=$(jq -r .place_id <<<"$T")"
+            echo "base_place_id=$(jq -r '.base_place_id // ""' <<<"$T")"
+          } >> "$GITHUB_OUTPUT"
+          echo "Deploying to $TARGET: $T"
 
   publish:
-    needs: [check-dispatcher, build]
-    strategy:
-      fail-fast: true
-      max-parallel: 1
-      matrix:
-        target: ${{ fromJSON(needs.check-dispatcher.outputs.targets) }}
+    needs: check-dispatcher
     uses: ./.github/workflows/publish.yml
     with:
-      environment: ${{ matrix.target.environment }}
-      universe_id: ${{ matrix.target.universe_id }}
-      place_id: ${{ matrix.target.place_id }}
-      base_place_id: ${{ matrix.target.base_place_id }}
+      environment: ${{ needs.check-dispatcher.outputs.environment }}
+      universe_id: ${{ needs.check-dispatcher.outputs.universe_id }}
+      place_id: ${{ needs.check-dispatcher.outputs.place_id }}
+      base_place_id: ${{ needs.check-dispatcher.outputs.base_place_id }}
       version_type: ${{ inputs.version_type || 'Published' }}
     secrets: inherit
