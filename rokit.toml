@@ -1,0 +1,4 @@
+# Tools pinned for local dev AND CI. Run `rokit install` after cloning.
+[tools]
+rojo = "rojo-rbx/rojo@7.7.1"
+lune = "lune-org/lune@0.11.0"

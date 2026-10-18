@@ -1,0 +1,44 @@
+name: Publish place
+
+on:
+  workflow_call:
+    inputs:
+      environment:  { type: string, required: true }
+      universe_id:  { type: string, required: true }
+      place_id:     { type: string, required: true }
+      version_type: { type: string, default: Published }
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to ${{ inputs.place_id }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+      url: https://www.roblox.com/games/${{ inputs.place_id }}
+    concurrency:
+      group: roblox-${{ inputs.environment }}-${{ inputs.place_id }}
+      cancel-in-progress: false   # never kill a deploy mid-upload
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: place
+
+      - name: Publish via Open Cloud
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          UNIVERSE_ID: ${{ inputs.universe_id }}
+          PLACE_ID: ${{ inputs.place_id }}
+          VERSION_TYPE: ${{ inputs.version_type }}
+        run: |
+          if [ -z "$ROBLOX_API_KEY" ]; then
+            echo "::error::ROBLOX_API_KEY secret is empty - add it to the '${{ inputs.environment }}' environment"; exit 1
+          fi
+          bash scripts/publish.sh game.rbxl

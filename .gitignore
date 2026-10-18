@@ -1,0 +1,9 @@
+# Build outputs (base.rbxl is NOT ignored - it's the committed map)
+code.rbxl
+game.rbxl
+*.rbxl.lock
+*.rbxlx.lock
+sourcemap.json
+Packages/
+ServerPackages/
+.env

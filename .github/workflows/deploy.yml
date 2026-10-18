@@ -1,0 +1,109 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Which environment to deploy"
+        type: choice
+        options: [test]
+        default: test
+      version_type:
+        description: "Saved = store a version only, Published = make it live"
+        type: choice
+        options: [Published, Saved]
+        default: Published
+
+permissions:
+  contents: read
+
+jobs:
+  check-dispatcher:
+    name: Check dispatcher
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.targets.outputs.targets }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy-targets.json
+          sparse-checkout-cone-mode: false
+
+      - name: Verify actor and branch
+        env:
+          ACTOR: ${{ github.actor }}
+          OWNER: ${{ github.repository_owner }}
+          DEPLOYERS: ${{ vars.DEPLOYERS }}   # optional repo variable, e.g. "alice,bob"
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::error::Deploys only run from main (got $GITHUB_REF)"; exit 1
+          fi
+          ALLOWED="${DEPLOYERS:-$OWNER}"
+          case ",${ALLOWED}," in
+            *",${ACTOR},"*) echo "$ACTOR is allowed to deploy" ;;
+            *) echo "::error::$ACTOR is not in the deployers list ($ALLOWED)"; exit 1 ;;
+          esac
+
+      - name: Select targets
+        id: targets
+        env:
+          TARGET: ${{ inputs.target || 'test' }}
+        run: |
+          T=$(jq -c --arg e "$TARGET" '[.[] | select(.environment == $e)]' deploy-targets.json)
+          if [ "$T" = "[]" ]; then echo "::error::No targets for '$TARGET'"; exit 1; fi
+          if echo "$T" | grep -q REPLACE_WITH; then
+            echo "::error::Fill in universe_id and place_id in deploy-targets.json"; exit 1
+          fi
+          echo "targets=$T" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build place
+    needs: check-dispatcher
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true   # base.rbxl is stored in Git LFS
+
+      - name: Install toolchain (Rokit)
+        uses: CompeyDev/setup-rokit@v0.2.1
+        with:
+          token: ${{ github.token }}
+
+      - name: Stamp build info
+        run: |
+          cat > src/shared/BuildInfo.luau <<EOF
+          return {
+          	commit = "${GITHUB_SHA::7}",
+          	builtAt = "$(date -u +%Y-%m-%dT%H:%MZ)",
+          }
+          EOF
+
+      - name: Build code with Rojo
+        run: rojo build default.project.json -o code.rbxl
+
+      - name: Merge code into base place
+        run: lune run merge base.rbxl code.rbxl game.rbxl
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: place
+          path: game.rbxl
+          retention-days: 7
+
+  publish:
+    needs: [check-dispatcher, build]
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        target: ${{ fromJSON(needs.check-dispatcher.outputs.targets) }}
+    uses: ./.github/workflows/publish.yml
+    with:
+      environment: ${{ matrix.target.environment }}
+      universe_id: ${{ matrix.target.universe_id }}
+      place_id: ${{ matrix.target.place_id }}
+      version_type: ${{ inputs.version_type || 'Published' }}
+    secrets: inherit
