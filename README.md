@@ -5,9 +5,8 @@ Rojo code + the builders' map → published to one Roblox game by GitHub Actions
 ```
 push to main (or "Run workflow")
   └─ Check dispatcher   (is this main? is the person allowed? which place?)
-  └─ Build code         (rojo build → code.rbxl)
-  └─ publish / Publish to <placeId>   "Deploying to test"
-        download the game's latest saved version → swap in the code → publish it
+  └─ publish / Publish to <placeId>   "Deploying to test" + progress bar
+        rojo build → download the game's latest saved version → swap in the code → publish it
 ```
 
 **One game, one place.** Builders work in it in Studio like normal and **save**. CI is the only thing that **publishes**: every deploy takes the latest saved version (with the builders' newest map), replaces the code folders, and publishes that.
@@ -121,7 +120,7 @@ git remote add origin git@github.com:<you>/<repo>.git
 git push -u origin main
 ```
 
-Open the **Actions** tab: *Check dispatcher → Build code → publish / Publish to &lt;placeId&gt;* with **Deploying to test**.
+Open the **Actions** tab: *Check dispatcher → publish / Publish to &lt;placeId&gt;*. While the publish job runs it shows **Deploying to test** and a progress bar; GitHub hides the bar once the job finishes.
 
 ### 8. Check it worked
 

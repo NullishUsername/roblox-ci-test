@@ -3,13 +3,13 @@ name: Publish place
 on:
   workflow_call:
     inputs:
-      environment:   { type: string, required: true }
-      universe_id:   { type: string, required: true }
-      place_id:      { type: string, required: true }
+      environment:  { type: string, required: true }
+      universe_id:  { type: string, required: true }
+      place_id:     { type: string, required: true }
       # Where the map comes from. Empty = the same place we publish to (one game).
       # "committed" = use base.rbxl from the repo. Any other ID = download that place.
       base_place_id: { type: string, default: "" }
-      version_type:  { type: string, default: Published }
+      version_type: { type: string, default: Published }
 
 permissions:
   contents: read
@@ -42,9 +42,17 @@ jobs:
         with:
           token: ${{ github.token }}
 
-      - uses: actions/download-artifact@v4
-        with:
-          name: code
+      - name: Stamp build info
+        run: |
+          cat > src/shared/BuildInfo.luau <<EOF
+          return {
+          	commit = "${GITHUB_SHA::7}",
+          	builtAt = "$(date -u +%Y-%m-%dT%H:%MZ)",
+          }
+          EOF
+
+      - name: Build code with Rojo
+        run: rojo build default.project.json -o code.rbxl
 
       - name: Get the map (latest saved version)
         env:
