@@ -17,7 +17,7 @@ label.BackgroundColor3 = Color3.new(0, 0, 0)
 label.TextColor3 = Color3.new(1, 1, 1)
 label.TextScaled = true
 label.Font = Enum.Font.Code
-label.Text = `build {BuildInfo.commit}`
+label.Text = `ooh you like boys... :3 build {BuildInfo.commit}`
 label.Parent = gui
 
 gui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
